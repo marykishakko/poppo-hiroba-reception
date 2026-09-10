@@ -1,1 +1,663 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ぽっぽひろば 受付・参加者登録</title>
+    <!-- LINE LIFF SDKの読み込み -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #f8fafc;
+            font-family: sans-serif;
+            color: #222;
+            overflow-x: hidden;
+            width: 100%;
+            min-height: 100%;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h2 { text-align: center; color: #1e3a8a; font-size: 20px; margin-bottom: 20px; font-weight: bold; }
+        h3 { font-size: 17px; color: #1e3a8a; border-bottom: 3px solid #3b82f6; padding-bottom: 8px; margin-bottom: 16px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; color: #1e293b; }
+        input[type="text"], select { width: 100%; padding: 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 16px; }
+        input[type="text"][readonly] { background: #f1f5f9; color: #64748b; }
+        .companion-box { background: #f8fafc; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; }
+        .companion-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        button { background: #2563eb; color: white; border: none; padding: 14px 20px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; margin-top: 10px; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        .btn-secondary { background: #10b981; }
+        .btn-danger { background: #ef4444; width: auto; padding: 6px 12px; font-size: 13px; margin: 0; }
+        .btn-back { background: #64748b; margin-top: 12px; }
+        .step-section { display: none; }
+        .step-section.active { display: block; }
+        .note { font-size: 12px; color: #475569; margin-top: 4px; }
+        .promise-intro { font-size: 14px; background: #eff6ff; padding: 12px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 16px; line-height: 1.5; }
+        
+        .promise-box { border: 2px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #fff; }
+        .promise-title { font-weight: bold; font-size: 15px; color: #1e3a8a; display: flex; gap: 8px; cursor: pointer; align-items: flex-start; }
+        .promise-title input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+        .promise-desc { font-size: 14px; background: #f8fafc; padding: 10px; border-radius: 6px; margin-top: 8px; line-height: 1.6; color: #334155;}
+        
+        .final-box { border: 2px solid #10b981; background: #f0fdf4; }
+        .final-box .promise-title { color: #065f46; font-size: 15px; }
+        
+        .section-divider { font-size: 15px; font-weight: bold; color: #1e3a8a; background: #e0f2fe; padding: 10px 12px; border-radius: 6px; margin: 20px 0 12px 0; border-left: 4px solid #0284c7; }
+        .existing-comp { font-size: 14px; padding: 8px; background: #e2e8f0; border-radius: 6px; margin-bottom: 8px; }
+        #loader { display: none; text-align: center; color: #2563eb; font-weight: bold; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>ぽっぽひろば 受付・参加者登録</h2>
+    <div id="loader">通信中...しばらくお待ちください。</div>
+
+    <!-- 当日チェックイン画面（LINE UID登録済みの場合に自動表示） -->
+    <div id="stepCheckIn" class="step-section">
+        <h3>当日受付（チェックイン）</h3>
+        <p style="font-size: 14px; color: #334155; margin-bottom: 15px;">本日参加するイベントと、参加されるご家族にチェックを入れてください。</p>
+        
+        <div class="form-group">
+            <label>参加するイベント</label>
+            <select id="eventSelect" class="form-control">
+                <!-- 動的にイベントが入ります -->
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>参加者（代表者・同行者）</label>
+            <div id="checkInMembersContainer" style="background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-bottom: 15px;">
+                <!-- チェックボックスが動的に生成されます -->
+            </div>
+        </div>
+        
+        <button type="button" class="btn-secondary" onclick="executeCheckIn()">受付をする</button>
+        <div style="text-align: center; margin-top: 15px;">
+            <a href="#" onclick="switchStep('step0'); return false;" style="font-size: 13px; color: #64748b;">別の方として登録・確認を行う場合はこちら</a>
+        </div>
+    </div>
+
+    <!-- 受付完了・人数表示画面 -->
+    <div id="stepCheckInComplete" class="step-section">
+        <div style="text-align: center; padding: 10px 0;">
+            <div style="font-size: 40px; margin-bottom: 10px;">✅</div>
+            <h3 style="border:none; color:#16a34a; font-size:20px; margin-bottom:10px;">受付が完了しました！</h3>
+            <p style="font-size: 16px; font-weight: bold; margin: 15px 0; color: #b91c1c;">
+                この画面を受付スタッフにお見せください
+            </p>
+            
+            <div style="background: #f0fdf4; border: 2px dashed #22c55e; padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center;">
+                <div style="font-size: 14px; color: #166534; margin-bottom: 8px;">本日のご参加人数</div>
+                <div style="font-size: 20px; font-weight: bold; color: #15803d; margin-bottom: 10px;">
+                    小学生以上：<span id="displayAdultChildCount" style="font-size: 30px; color: #b91c1c;">0</span> 名
+                </div>
+                <div style="font-size: 20px; font-weight: bold; color: #15803d;">
+                    未就学児：<span id="displayInfantCount" style="font-size: 30px; color: #1d4ed8;">0</span> 名
+                </div>
+            </div>
+            
+            <button type="button" onclick="location.reload()">終了する</button>
+        </div>
+    </div>
+
+    <!-- ステップ0: 代表者確認 -->
+    <div id="step0" class="step-section">
+        <h3>代表者確認</h3>
+        <p style="font-size: 14px; color: #334155; margin-bottom: 15px;">登録状況を確認します。氏名と生年月日を入力してください。</p>
+        <div class="form-group">
+            <label>代表者 氏名</label>
+            <input type="text" id="checkName" placeholder="例：佐藤 花子">
+        </div>
+        <div class="form-group">
+            <label>代表者 生年月日</label>
+            <input type="text" id="checkBirth" maxlength="8" placeholder="例：19850410">
+            <div class="note">半角数字8桁（YYYYMMDD）で入力してください</div>
+        </div>
+        <button type="button" onclick="checkUser()">確認する</button>
+    </div>
+
+    <!-- ステップ1: 情報入力・更新 -->
+    <div id="step1" class="step-section">
+        <h3 id="step1Title">【1/2】参加形式と代表者情報</h3>
+        <input type="hidden" id="formMode">
+        <input type="hidden" id="familyId">
+        <div class="form-group">
+            <label>参加形式を選択してください</label>
+            <select id="participationType" onchange="toggleParticipationMode()">
+                <option value="family">親子で参加(小学生以下のお子さま同伴)</option>
+                <option value="adult">中学生以上・大人のみで参加</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>代表者 氏名</label>
+            <input type="text" id="leaderName" readonly>
+        </div>
+        <div class="form-group">
+            <label>代表者 生年月日</label>
+            <input type="text" id="leaderBirth" readonly>
+        </div>
+        
+        <div class="form-group" id="leaderTypeGroup" style="display:none;">
+            <label>区分</label>
+            <select id="leaderType" onchange="toggleSchool()">
+                <option value="一般">一般</option>
+                <option value="学生">学生</option>
+            </select>
+        </div>
+        <div class="form-group" id="schoolGroup" style="display:none;">
+            <label>学校名</label>
+            <input type="text" id="schoolName" placeholder="例：〇〇大学">
+        </div>
+        <div class="form-group">
+            <label>居住地</label>
+            <select id="city">
+                <option value="相模原市南区">相模原市南区</option>
+                <option value="相模原市中央区">相模原市中央区</option>
+                <option value="相模原市緑区">相模原市緑区</option>
+                <option value="座間市">座間市</option>
+                <option value="大和市">大和市</option>
+                <option value="海老名市">海老名市</option>
+                <option value="厚木市">厚木市</option>
+                <option value="町田市">町田市</option>
+                <option value="横浜市">横浜市</option>
+                <option value="寒川町">寒川町</option>
+                <option value="綾瀬市">綾瀬市</option>
+                <option value="その他">その他</option>
+            </select>
+        </div>
+
+        <div id="companionSection" style="margin-top: 25px; border-top: 2px dashed #cbd5e1; padding-top: 20px;">
+            <h3 style="font-size: 16px; border: none; margin-bottom: 10px;">同行するお子さま等の情報（追加）</h3>
+            <div id="existingCompanionsContainer" style="display:none; margin-bottom: 15px;">
+                <label>登録済みの同行者</label>
+                <div id="existingCompanionsList"></div>
+            </div>
+            <div id="newCompanionList"></div>
+            <button type="button" class="btn-secondary" onclick="addCompanionField()">＋ 同行者（家族）を追加する</button>
+        </div>
+        <button type="button" onclick="goToStep2()" style="margin-top: 25px;">次へ（お約束の確認へ）</button>
+    </div>
+
+    <!-- ステップ2: お約束の同意 -->
+    <div id="step2" class="step-section">
+        <h3>【2/2】お約束と確認事項の同意</h3>
+        <div class="promise-intro">
+            みなさんが安心して楽しい時間を過ごせるよう、すべてのお約束項目および最終確認にそれぞれチェックを入れてください。
+        </div>
+        <div id="promiseListContainer"></div>
+        
+        <button type="button" id="submitBtn" onclick="submitData()">登録 / 更新を完了する</button>
+        <button type="button" class="btn-secondary btn-back" onclick="switchStep('step1')">戻る</button>
+    </div>
+
+    <!-- ステップ3: 登録・更新完了 -->
+    <div id="step3" class="step-section">
+        <div style="text-align: center; padding: 30px 10px;">
+            <div style="font-size: 50px; margin-bottom: 15px;">✅</div>
+            <h3 style="border:none; color:#10b981; font-size:20px; margin-bottom:15px;">手続きが完了しました</h3>
+            <p style="font-size: 15px; line-height: 1.6; margin-bottom: 25px; color: #334155;">
+                ご協力ありがとうございます。<br>
+                みなさんが安心して「あそぶ」を楽しめる場づくりに、ご理解とご協力をお願いいたします。
+            </p>
+            <button type="button" onclick="resetToFirstStep()">最初に戻る</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function showLoader(show) {
+  const loader = document.getElementById('loader');
+  if (loader) {
+    loader.style.display = show ? 'block' : 'none';
+  }
+}
+
+let userLineUid = "";
+let currentExistingCompanions = [];
+let currentFamilyData = null;
+
+// ▼▼▼ ここをGASのWebアプリのデプロイURLに書き換えてください ▼▼▼
+const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzYEM4NiSbG3sL-cxc9bQUYsakns6tcfPbBKRlCSrytVzTYnNvz5UQnjyC2OgYuGjEQ4Q/exec";
+
+function callGAS(action, params) {
+  return fetch(GAS_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" }, // CORSプリフライトを避けるため必ずtext/plain
+    body: JSON.stringify(Object.assign({ action: action }, params))
+  }).then(res => {
+    if (!res.ok) throw new Error("サーバーエラー: " + res.status);
+    return res.json();
+  });
+}
+
+window.onload = function() {
+  showLoader(true);
+
+  liff.init({ liffId: "2011487597-Rc0mIg9U", withLogin: true })
+    .then(() => {
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+      const idToken = liff.getDecodedIDToken();
+      if (idToken) {
+        userLineUid = idToken.sub;
+      }
+      showLoader(false);
+      initAppRoute();
+    })
+    .catch(err => {
+      showLoader(false);
+      alert("LIFF初期化エラー: " + err);
+      switchStep('step0');
+    });
+};
+
+
+
+
+function setupCheckInScreen(res) {
+    const container = document.getElementById('checkInMembersContainer');
+    container.innerHTML = '';
+    
+    container.appendChild(createMemberCheckbox(res.leaderName, res.leaderBirth, true));
+    
+    if (res.companions && res.companions.length > 0) {
+        res.companions.forEach(comp => {
+            container.appendChild(createMemberCheckbox(comp.name, comp.birth, false));
+        });
+    }
+}
+
+function createMemberCheckbox(name, birth, isLeader) {
+    let age = getAgeAsOfApril1st(birth);
+    let categoryText = (age >= 6) ? "（小学生以上/大人）" : "（未就学児）";
+    
+    let div = document.createElement('div');
+    div.style.cssText = "margin-bottom: 10px; font-size: 15px;";
+    div.innerHTML = `
+        <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" class="member-chk" data-name="${name}" data-birth="${birth}" checked style="width: 18px; height: 18px;">
+            <span><b>${name}</b> <span style="font-size: 13px; color: #64748b;">${categoryText}</span></span>
+        </label>
+    `;
+    return div;
+}
+
+function executeCheckIn() {
+    const checkboxes = document.querySelectorAll('.member-chk:checked');
+    if (checkboxes.length === 0) {
+        alert("本日参加される方に少なくとも1人チェックを入れてください。");
+        return;
+    }
+    
+    let adultAndChildCount = 0;
+    let infantCount = 0;
+    let summaryList = [];
+    let selectedNames = [];
+    
+    checkboxes.forEach(chk => {
+        let name = chk.getAttribute('data-name');
+        let birth = chk.getAttribute('data-birth');
+        let age = getAgeAsOfApril1st(birth);
+        
+        selectedNames.push(name);
+        summaryList.push(`${name}(${birth})`);
+        if (age >= 6) {
+            adultAndChildCount++;
+        } else {
+            infantCount++;
+        }
+    });
+    
+    const eventSelect = document.getElementById('eventSelect');
+    const eventName = eventSelect.value;
+    const eventId = eventSelect.options[eventSelect.selectedIndex].getAttribute('data-id');
+    
+    const payload = {
+        familyId: currentFamilyData.familyId,
+        leaderName: currentFamilyData.leaderName,
+        eventId: eventId,
+        eventName: eventName,
+        adultAndChildCount: adultAndChildCount,
+        infantCount: infantCount,
+        selectedNames: selectedNames,
+        attendeesSummary: summaryList.join(", ")
+    };
+    
+    showLoader(true);
+    callGAS('completeCheckIn', { payload: payload })
+        .then(res => {
+            showLoader(false);
+            if (res && res.success === false) {
+                alert("エラーが発生しました: " + (res.error || "不明なエラー"));
+                return;
+            }
+            document.getElementById('displayAdultChildCount').innerText = adultAndChildCount;
+            document.getElementById('displayInfantCount').innerText = infantCount;
+            switchStep('stepCheckInComplete');
+        })
+        .catch(err => {
+            showLoader(false);
+            alert("エラーが発生しました: " + err.message);
+        });
+}
+
+function forceScrollTop() {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+}
+
+function switchStep(stepId) {
+    document.querySelectorAll('.step-section').forEach(el => el.classList.remove('active'));
+    document.getElementById(stepId).classList.add('active');
+    forceScrollTop();
+    setTimeout(forceScrollTop, 10);
+}
+
+function resetToFirstStep() {
+    document.getElementById('checkName').value = '';
+    document.getElementById('checkBirth').value = '';
+    document.getElementById('newCompanionList').innerHTML = '';
+    currentExistingCompanions = [];
+    switchStep('step0');
+}
+
+function getAgeAsOfApril1st(birthStr) {
+    if (!birthStr) return 99;
+    let clean = String(birthStr).replace(/[^0-9]/g, '');
+    if (clean.length !== 8) return 99;
+    let y = parseInt(clean.substring(0, 4), 10);
+    let m = parseInt(clean.substring(4, 6), 10) - 1;
+    let d = parseInt(clean.substring(6, 8), 10);
+    
+    let now = new Date();
+    let fiscalYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    
+    let age = fiscalYear - y;
+    if (m > 3 || (m === 3 && d >= 2)) {
+        age--;
+    }
+    return age;
+}
+
+const promisesFamily = [
+    { title: "① お子さまの見守りについて", desc: "・お子さま同士の思わぬトラブルや事故を防ぐため、保護者の方がお子さまから目を離さず見守りをお願いします。<br>・誤飲防止のため、大きさに関わらず、おもちゃを口に入れないよう、その都度お子さまへお声掛けをお願いします。" },
+    { title: "② 撮影・広報について", desc: "・開催記録として写真・動画を撮影することがあります。<br>・撮影した写真・動画は、個人が特定されないよう配慮したうえで、SNS・ホームページ等の広報活動に使用する場合があります。" },
+    { title: "③ 参加者による撮影について", desc: "・写真・動画の撮影は可能ですが、他の参加者が写り込まないようご配慮ください。<br>・他の参加者のご迷惑となる撮影はご遠慮ください。" },
+    { title: "④ マナーについて", desc: "・他の参加者が不快に感じる行為や、運営の妨げとなる行為はご遠慮ください。<br>・会場ではお互いに思いやりを持ってご利用ください。" },
+    { title: "⑤ 飲食について", desc: "・会場内での飲食（飴・ガムを含む）はご遠慮ください。<br>・水分補給は、ふた付きの飲み物のみ可能です。おもちゃから離れた場所でお願いします。" },
+    { title: "⑥ 体調について", desc: "・病気に対する抵抗力が低い参加者の方もいらっしゃいます。発熱や体調不良、咳・嘔吐・下痢などの症状がある場合や、感染のおそれのある発疹などがある場合は、参加をお控えください。" },
+    { title: "⑦ 安全管理・事故について", desc: "・会場内では安全に配慮しておりますが、事故・けが・盗難・紛失等につきましては、主催者は責任を負いかねます。<br>・お子さま、ご自身の安全管理は保護者の責任でお願いいたします。" }
+];
+
+const promisesAdult = [
+    { title: "① 小さな子どもとの接し方について", desc: "・手をつなぐ、頭をなでる、抱き上げるなど、お子さまの体に触れる行為は、必ず保護者の了承を得てから行ってください。<br>・保護者の了承なく、お子さまへむやみに触れることはご遠慮ください。" },
+    { title: "② 撮影・広報について", desc: "・開催記録として写真・動画を撮影することがあります。<br>・撮影した写真・動画は、個人が特定されないよう配慮したうえで、SNS・ホームページ等の広報活動に使用する場合があります。" },
+    { title: "③ 参加者による撮影について", desc: "・写真・動画の撮影は可能ですが、他の参加者が写り込まないようご配慮ください。<br>・他の参加者のご迷惑となる撮影はご遠慮ください。" },
+    { title: "④ マナーについて", desc: "・他の参加者が不快に感じる行為や、運営の妨げとなる行為はご遠慮ください。<br>・会場ではお互いに思いやりを持ってご利用ください。" },
+    { title: "⑤ 飲食について", desc: "・会場内での飲食（飴・ガムを含む）はご遠慮ください。<br>・水分補給は、ふた付きの飲み物のみ可能です。おもちゃから離れた場所でお願いします。" },
+    { title: "⑥ 体調について", desc: "・病気に対する抵抗力が低い参加者の方もいらっしゃいます。発熱や体調不良、咳・嘔吐・下痢などの症状がある場合や、感染のおそれのある発疹などがある場合は、参加をお控えください。" },
+    { title: "⑦ 安全管理・事故について", desc: "・会場内では安全に配慮しておりますが、事故・けが・盗難・紛失等につきましては、主催者は責任を負いかねます。<br>・ご自身の安全管理は自己責任でお願いいたします。" }
+];
+
+function showLoader(show) { document.getElementById('loader').style.display = show ? 'block' : 'none'; }
+
+function toggleSchool() {
+    const leaderType = document.getElementById('leaderType').value;
+    const isAdult = document.getElementById('participationType').value === 'adult';
+    document.getElementById('schoolGroup').style.display = (isAdult && leaderType === '学生') ? 'block' : 'none';
+}
+
+function toggleParticipationMode() {
+    const partType = document.getElementById('participationType').value;
+    const isAdultOnly = (partType === 'adult');
+    document.getElementById('leaderTypeGroup').style.display = isAdultOnly ? 'block' : 'none';
+    if (!isAdultOnly) {
+        document.getElementById('leaderType').value = '一般';
+    }
+    toggleSchool();
+}
+
+function checkUser() {
+    let name = document.getElementById('checkName').value.trim();
+    let birthInput = document.getElementById('checkBirth').value;
+    
+    let birth = birthInput.replace(/[０-９]/g, function(s) {
+        return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
+    }).replace(/[^0-9]/g, '');
+    document.getElementById('checkBirth').value = birth;
+    if (!name || !birth) { alert("氏名と生年月日を入力してください。"); return; }
+    if (birth.length !== 8) { alert("生年月日は半角8桁の数字（例: 19850410）で入力してください。"); return; }
+    
+    let repAge = getAgeAsOfApril1st(birth);
+    if (repAge <= 11) {
+        alert("小学生以下のお子さまは代表者として登録できません。保護者の方が代表者としてご登録ください。");
+        return;
+    }
+    showLoader(true);
+    callGAS('checkRegistrationStatus', { name: name, birth: birth, lineUid: userLineUid })
+    .then(res => {
+        showLoader(false);
+        if (res.found) {
+            if (res.alreadyRegistered) {
+                alert("今年度すでに受付済みですが、登録情報の確認および同行者の追加を行うことができます。");
+            }
+            document.getElementById('formMode').value = 'update';
+            document.getElementById('familyId').value = res.familyId;
+            document.getElementById('leaderName').value = res.leaderName;
+            document.getElementById('leaderBirth').value = res.leaderBirth;
+            document.getElementById('city').value = res.city || '相模原市南区';
+            document.getElementById('step1Title').innerText = res.alreadyRegistered ? "【1/2】受付済み・情報確認と同行者追加" : "【1/2】登録情報の確認と更新";
+            
+            currentExistingCompanions = res.existingCompanions || [];
+            const exContainer = document.getElementById('existingCompanionsContainer');
+            const exList = document.getElementById('existingCompanionsList');
+            exList.innerHTML = '';
+            if (currentExistingCompanions.length > 0) {
+                exContainer.style.display = 'block';
+                currentExistingCompanions.forEach(c => {
+                    const div = document.createElement('div');
+                    div.className = 'existing-comp';
+                    div.innerText = `${c.name} (${c.birth})`;
+                    exList.appendChild(div);
+                });
+            } else {
+                exContainer.style.display = 'none';
+            }
+        } else {
+            document.getElementById('formMode').value = 'new';
+            document.getElementById('leaderName').value = name;
+            document.getElementById('leaderBirth').value = birth;
+            document.getElementById('step1Title').innerText = "【1/2】新規登録情報の入力";
+            currentExistingCompanions = [];
+            document.getElementById('existingCompanionsContainer').style.display = 'none';
+        }
+        
+        document.getElementById('participationType').value = 'family';
+        toggleParticipationMode();
+        switchStep('step1');
+    })
+    .catch(err => {
+        showLoader(false);
+        alert("エラーが発生しました: " + err.message);
+    });
+}
+
+function addCompanionField() {
+    const container = document.getElementById('newCompanionList');
+    const div = document.createElement('div');
+    div.className = 'companion-box';
+    div.innerHTML = `
+        <div class="companion-header">
+            <span style="font-weight:bold; font-size:14px; color:#334155;">同行者（家族）</span>
+            <button type="button" class="btn-danger" onclick="this.closest('.companion-box').remove()">削除</button>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+            <input type="text" class="comp-name" placeholder="例：鈴木 健太">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+            <input type="text" class="comp-birth" maxlength="8" placeholder="例：20220610">
+            <div class="note">半角8桁の数字（YYYYMMDD）</div>
+        </div>
+    `;
+    container.appendChild(div);
+}
+
+function goToStep2() {
+    const city = document.getElementById('city').value.trim();
+    const type = document.getElementById('leaderType').value;
+    const school = document.getElementById('schoolName').value.trim();
+    const partType = document.getElementById('participationType').value;
+    
+    if (!city) { alert("居住地を選択してください。"); return; }
+    if (partType === 'adult' && type === '学生' && !school) { alert("学校名を入力してください。"); return; }
+    
+    let hasChild = false; 
+    currentExistingCompanions.forEach(c => {
+        if (getAgeAsOfApril1st(c.birth) <= 11) hasChild = true;
+    });
+    
+    const cNames = document.querySelectorAll('.comp-name');
+    const cBirths = document.querySelectorAll('.comp-birth');
+    for (let i = 0; i < cNames.length; i++) {
+        let cNameVal = cNames[i].value.trim();
+        let cBirthVal = cBirths[i].value.trim();
+        if (!cNameVal || !cBirthVal) {
+            alert("追加した同行者の氏名と生年月日を両方入力するか、不要な枠を削除してください。");
+            return;
+        }
+        if (cBirthVal.length !== 8 || isNaN(cBirthVal)) {
+            alert(`同行者「${cNameVal}」の生年月日は半角8桁の数字で正しく入力してください。`);
+            return;
+        }
+        if (getAgeAsOfApril1st(cBirthVal) <= 11) hasChild = true;
+    }
+    
+    if (partType === 'family' && !hasChild) {
+        alert("「親子で参加」を選択している場合は、小学生以下のお子さまの同行者を1人以上入力（または登録）してください。");
+        return;
+    }
+    let isFamilyMode = (partType === 'family' || hasChild);
+    buildPromisesUI(hasChild, isFamilyMode);
+    switchStep('step2');
+}
+
+function buildPromisesUI(hasChild, isFamilyMode) {
+    const container = document.getElementById('promiseListContainer');
+    container.innerHTML = '';
+    
+    let listHtml = '';
+    if (isFamilyMode) {
+        listHtml += `<div style="font-weight:bold; color:#1e3a8a; margin-bottom:10px; font-size:15px;">【親子で参加のお約束】</div>`;
+        promisesFamily.forEach((item, i) => {
+            listHtml += `
+                <div class="promise-box">
+                    <label class="promise-title">
+                        <input type="checkbox" id="fam_${i}" class="promise-check" onchange="checkAllCheckedState()">
+                        <span>${item.title}</span>
+                    </label>
+                    <div class="promise-desc">${item.desc}</div>
+                </div>`;
+        });
+        listHtml += `<div class="section-divider">中学生以上の方はこちらもご確認ください</div>`;
+        listHtml += `
+            <div class="promise-box">
+                <label class="promise-title">
+                    <input type="checkbox" id="adult_extra_0" class="promise-check" onchange="checkAllCheckedState()">
+                    <span>${promisesAdult[0].title}</span>
+                </label>
+                <div class="promise-desc">${promisesAdult[0].desc}</div>
+            </div>`;
+    } else {
+        promisesAdult.forEach((item, i) => {
+            listHtml += `
+                <div class="promise-box">
+                    <label class="promise-title">
+                        <input type="checkbox" id="adt_${i}" class="promise-check" onchange="checkAllCheckedState()">
+                        <span>${item.title}</span>
+                    </label>
+                    <div class="promise-desc">${item.desc}</div>
+                </div>`;
+        });
+    }
+    listHtml += `
+        <div class="promise-box final-box">
+            <label class="promise-title">
+                <input type="checkbox" id="finalCheck" class="promise-check" onchange="checkAllCheckedState()">
+                <span>【最終確認】上記全ての内容を確認し、同意の上参加します。(必須)</span>
+            </label>
+        </div>`;
+    container.innerHTML = listHtml;
+    checkAllCheckedState();
+}
+
+function checkAllCheckedState() {
+    const checks = document.querySelectorAll('.promise-check');
+    const submitBtn = document.getElementById('submitBtn');
+    let allChecked = true;
+    checks.forEach(chk => { if (!chk.checked) allChecked = false; });
+    if (allChecked && checks.length > 0) {
+        submitBtn.removeAttribute('disabled');
+    } else {
+        submitBtn.setAttribute('disabled', 'true');
+    }
+}
+
+function submitData() {
+    const checks = document.querySelectorAll('.promise-check');
+    for (let chk of checks) {
+        if (!chk.checked) { 
+            alert("すべてのお約束項目および最終確認にチェックを入れてください。"); 
+            return; 
+        }
+    }
+    const newCompanions = [];
+    const cNames = document.querySelectorAll('.comp-name');
+    const cBirths = document.querySelectorAll('.comp-birth');
+    for (let i = 0; i < cNames.length; i++) {
+        let cNameVal = cNames[i].value.trim();
+        let cBirthVal = cBirths[i].value.trim();
+        if (cNameVal && cBirthVal) {
+            newCompanions.push({ name: cNameVal, birth: cBirthVal });
+        }
+    }
+    const payload = {
+        mode: document.getElementById('formMode').value,
+        familyId: document.getElementById('familyId').value,
+        leaderName: document.getElementById('leaderName').value,
+        leaderBirth: document.getElementById('leaderBirth').value,
+        city: document.getElementById('city').value,
+        leaderType: document.getElementById('leaderType').value,
+        schoolName: document.getElementById('schoolName').value,
+        newCompanions: newCompanions,
+        lineUid: userLineUid
+    };
+    showLoader(true);
+    callGAS('saveRegistration', { payload: payload })
+    .then(() => {
+        showLoader(false);
+        switchStep('step3');
+    })
+    .catch(err => {
+        showLoader(false);
+        alert("エラーが発生しました: " + err.message);
+    });
+}
+    function initAppRoute() {
+      window.scrollTo(0, 0);
+    }
+</script>
+</body>
+</html>
 

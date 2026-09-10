@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ぽっぽひろば 受付・参加者登録</title>
+    <!-- LINE LIFF SDKの読み込み -->
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #f8fafc;
+            font-family: sans-serif;
+            color: #222;
+            overflow-x: hidden;
+            width: 100%;
+            min-height: 100%;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h2 { text-align: center; color: #1e3a8a; font-size: 20px; margin-bottom: 20px; font-weight: bold; }
+        h3 { font-size: 17px; color: #1e3a8a; border-bottom: 3px solid #3b82f6; padding-bottom: 8px; margin-bottom: 16px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; color: #1e293b; }

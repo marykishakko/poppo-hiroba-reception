@@ -82,7 +82,19 @@
         
         <button type="button" class="btn-secondary" onclick="executeCheckIn()">受付をする</button>
         <div style="text-align: center; margin-top: 15px;">
-            <a href="#" onclick="switchStep('step0'); return false;" style="font-size: 13px; color: #64748b;">別の方として登録・確認を行う場合はこちら</a>
+            <a href="#" onclick="goToUpdateFromCheckIn(); return false;" style="font-size: 13px; color: #2563eb; display:block; margin-bottom:8px;">同行者の追加・登録情報の変更はこちら</a>
+            <a href="#" onclick="startAlternateEntry(); return false;" style="font-size: 13px; color: #64748b;">別の方として登録・確認を行う場合はこちら</a>
+        </div>
+    </div>
+
+    <!-- 家族が見つかった時：受付か更新かを選ぶ画面 -->
+    <div id="stepChoice" class="step-section">
+        <h3>受付方法を選択してください</h3>
+        <p style="font-size: 14px; color: #334155; margin-bottom: 20px;"><span id="choiceLeaderName"></span>様、本日はどちらの手続きを行いますか？</p>
+        <button type="button" onclick="goToCheckInFromChoice()" style="margin-bottom: 12px;">本日の受付をする（チェックイン）</button>
+        <button type="button" class="btn-secondary" onclick="goToUpdateFromChoice()">登録情報を更新する（同行者追加・住所変更など）</button>
+        <div style="text-align: center; margin-top: 15px;">
+            <a href="#" onclick="startAlternateEntry(); return false;" style="font-size: 13px; color: #64748b;">別の方として登録・確認を行う場合はこちら</a>
         </div>
     </div>
 
@@ -224,6 +236,15 @@ function showLoader(show) {
 let userLineUid = "";
 let currentExistingCompanions = [];
 let currentFamilyData = null;
+let currentFamilyDetail = null; // checkUser/findFamilyByLineUidの結果一式（同行者追加などで再利用）
+let isAlternateEntry = false;   // trueの間はLINE UIDを送信しない（他人の代行入力を防ぐため）
+
+function startAlternateEntry() {
+  isAlternateEntry = true;
+  document.getElementById('checkName').value = '';
+  document.getElementById('checkBirth').value = '';
+  switchStep('step0');
+}
 
 // ▼▼▼ ここをGASのWebアプリのデプロイURLに書き換えてください ▼▼▼
 const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzYEM4NiSbG3sL-cxc9bQUYsakns6tcfPbBKRlCSrytVzTYnNvz5UQnjyC2OgYuGjEQ4Q/exec";
@@ -271,11 +292,10 @@ function setupCheckInScreen(res) {
     
     container.appendChild(createMemberCheckbox(res.leaderName, res.leaderBirth, true));
     
-    if (res.companions && res.companions.length > 0) {
-        res.companions.forEach(comp => {
-            container.appendChild(createMemberCheckbox(comp.name, comp.birth, false));
-        });
-    }
+    const companions = res.existingCompanions || res.companions || [];
+    companions.forEach(comp => {
+        container.appendChild(createMemberCheckbox(comp.name, comp.birth, false));
+    });
 }
 
 function createMemberCheckbox(name, birth, isLeader) {
@@ -374,6 +394,9 @@ function resetToFirstStep() {
     document.getElementById('checkBirth').value = '';
     document.getElementById('newCompanionList').innerHTML = '';
     currentExistingCompanions = [];
+    // isAlternateEntryはここでリセットしない：
+    // 一度「別の方として」に入ったら、ページを再読み込みするまでは
+    // 安全側（LINE UIDを送らない）を維持し続ける
     switchStep('step0');
 }
 
@@ -450,52 +473,88 @@ function checkUser() {
         return;
     }
     showLoader(true);
-    callGAS('checkRegistrationStatus', { name: name, birth: birth, lineUid: userLineUid })
+    // 「別の方として」入力中は、今このスマホでログイン中のLINEアカウントを
+    // 別家族に誤って紐付けないよう、LINE UIDを送らない
+    const lineUidToSend = isAlternateEntry ? '' : userLineUid;
+    callGAS('checkRegistrationStatus', { name: name, birth: birth, lineUid: lineUidToSend })
     .then(res => {
         showLoader(false);
         if (res.found) {
-            if (res.alreadyRegistered) {
-                alert("今年度すでに受付済みですが、登録情報の確認および同行者の追加を行うことができます。");
-            }
-            document.getElementById('formMode').value = 'update';
-            document.getElementById('familyId').value = res.familyId;
-            document.getElementById('leaderName').value = res.leaderName;
-            document.getElementById('leaderBirth').value = res.leaderBirth;
-            document.getElementById('city').value = res.city || '相模原市南区';
-            document.getElementById('step1Title').innerText = res.alreadyRegistered ? "【1/2】受付済み・情報確認と同行者追加" : "【1/2】登録情報の確認と更新";
-            
-            currentExistingCompanions = res.existingCompanions || [];
-            const exContainer = document.getElementById('existingCompanionsContainer');
-            const exList = document.getElementById('existingCompanionsList');
-            exList.innerHTML = '';
-            if (currentExistingCompanions.length > 0) {
-                exContainer.style.display = 'block';
-                currentExistingCompanions.forEach(c => {
-                    const div = document.createElement('div');
-                    div.className = 'existing-comp';
-                    div.innerText = `${c.name} (${c.birth})`;
-                    exList.appendChild(div);
-                });
-            } else {
-                exContainer.style.display = 'none';
-            }
+            currentFamilyDetail = res;
+            document.getElementById('choiceLeaderName').innerText = res.leaderName;
+            switchStep('stepChoice');
         } else {
-            document.getElementById('formMode').value = 'new';
-            document.getElementById('leaderName').value = name;
-            document.getElementById('leaderBirth').value = birth;
-            document.getElementById('step1Title').innerText = "【1/2】新規登録情報の入力";
-            currentExistingCompanions = [];
-            document.getElementById('existingCompanionsContainer').style.display = 'none';
+            proceedToUpdateStep1(res, name, birth);
         }
-        
-        document.getElementById('participationType').value = 'family';
-        toggleParticipationMode();
-        switchStep('step1');
     })
     .catch(err => {
         showLoader(false);
         alert("エラーが発生しました: " + err.message);
     });
+}
+
+// 家族の情報入力・更新画面（step1）にフォームをセットして表示する
+// res: checkRegistrationStatus または findFamilyByLineUid の結果
+function proceedToUpdateStep1(res, name, birth) {
+    if (res.found) {
+        document.getElementById('formMode').value = 'update';
+        document.getElementById('familyId').value = res.familyId;
+        document.getElementById('leaderName').value = res.leaderName;
+        document.getElementById('leaderBirth').value = res.leaderBirth;
+        document.getElementById('city').value = res.city || '相模原市南区';
+        document.getElementById('step1Title').innerText = "【1/2】登録情報の確認と更新";
+        
+        currentExistingCompanions = res.existingCompanions || [];
+        const exContainer = document.getElementById('existingCompanionsContainer');
+        const exList = document.getElementById('existingCompanionsList');
+        exList.innerHTML = '';
+        if (currentExistingCompanions.length > 0) {
+            exContainer.style.display = 'block';
+            currentExistingCompanions.forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'existing-comp';
+                div.innerText = `${c.name} (${c.birth})`;
+                exList.appendChild(div);
+            });
+        } else {
+            exContainer.style.display = 'none';
+        }
+    } else {
+        document.getElementById('formMode').value = 'new';
+        document.getElementById('leaderName').value = name;
+        document.getElementById('leaderBirth').value = birth;
+        document.getElementById('step1Title').innerText = "【1/2】新規登録情報の入力";
+        currentExistingCompanions = [];
+        document.getElementById('existingCompanionsContainer').style.display = 'none';
+    }
+    
+    document.getElementById('participationType').value = 'family';
+    toggleParticipationMode();
+    switchStep('step1');
+}
+
+// 「本日の受付をする」（stepChoiceから）
+function goToCheckInFromChoice() {
+    if (!currentFamilyDetail) return;
+    currentFamilyData = { familyId: currentFamilyDetail.familyId, leaderName: currentFamilyDetail.leaderName };
+    loadEventOptions();
+    setupCheckInScreen(currentFamilyDetail);
+    switchStep('stepCheckIn');
+}
+
+// 「登録情報を更新する」（stepChoiceから）
+function goToUpdateFromChoice() {
+    if (!currentFamilyDetail) return;
+    proceedToUpdateStep1(currentFamilyDetail, currentFamilyDetail.leaderName, currentFamilyDetail.leaderBirth);
+}
+
+// チェックイン画面（LINE UID自動判定）から「同行者の追加・登録情報の変更」
+function goToUpdateFromCheckIn() {
+    if (!currentFamilyDetail) {
+        alert("登録情報の取得に失敗しました。お手数ですが最初からやり直してください。");
+        return;
+    }
+    proceedToUpdateStep1(currentFamilyDetail, currentFamilyDetail.leaderName, currentFamilyDetail.leaderBirth);
 }
 
 function addCompanionField() {
@@ -645,7 +704,7 @@ function submitData() {
         leaderType: document.getElementById('leaderType').value,
         schoolName: document.getElementById('schoolName').value,
         newCompanions: newCompanions,
-        lineUid: userLineUid
+        lineUid: isAlternateEntry ? '' : userLineUid
     };
     showLoader(true);
     callGAS('saveRegistration', { payload: payload })
@@ -672,6 +731,7 @@ function submitData() {
           showLoader(false);
           if (res && res.found) {
             currentFamilyData = { familyId: res.familyId, leaderName: res.leaderName };
+            currentFamilyDetail = res;
             loadEventOptions();
             setupCheckInScreen(res);
             switchStep('stepCheckIn');

@@ -91,7 +91,7 @@
     <div id="stepChoice" class="step-section">
         <h3>受付方法を選択してください</h3>
         <p style="font-size: 14px; color: #334155; margin-bottom: 20px;"><span id="choiceLeaderName"></span>様、本日はどちらの手続きを行いますか？</p>
-        <button type="button" onclick="goToCheckInFromChoice()" style="margin-bottom: 12px;">本日の受付をする（チェックイン）</button>
+        <button type="button" id="choiceCheckInBtn" onclick="goToCheckInFromChoice()" style="margin-bottom: 12px; display:none;">本日の受付をする（チェックイン）</button>
         <button type="button" class="btn-secondary" onclick="goToUpdateFromChoice()">登録情報を更新する（同行者追加・住所変更など）</button>
         <div style="text-align: center; margin-top: 15px;">
             <a href="#" onclick="startAlternateEntry(); return false;" style="font-size: 13px; color: #64748b;">別の方として登録・確認を行う場合はこちら</a>
@@ -220,7 +220,8 @@
                 ご協力ありがとうございます。<br>
                 みなさんが安心して「あそぶ」を楽しめる場づくりに、ご理解とご協力をお願いいたします。
             </p>
-            <button type="button" onclick="resetToFirstStep()">最初に戻る</button>
+            <button type="button" id="continueToCheckInBtn" onclick="goToCheckInFromChoice()" style="margin-bottom: 12px; display:none;">続けて本日の受付をする</button>
+            <button type="button" class="btn-secondary" onclick="resetToFirstStep()">最初に戻る</button>
         </div>
     </div>
 </div>
@@ -236,6 +237,7 @@ function showLoader(show) {
 let userLineUid = "";
 let currentExistingCompanions = [];
 let currentFamilyData = null;
+let isVenueEntry = false; // 会場QR（?checkin=1）から開いた時だけtrueになる
 let currentFamilyDetail = null; // checkUser/findFamilyByLineUidの結果一式（同行者追加などで再利用）
 let isAlternateEntry = false;   // trueの間はLINE UIDを送信しない（他人の代行入力を防ぐため）
 
@@ -273,6 +275,10 @@ window.onload = function() {
       if (idToken) {
         userLineUid = idToken.sub;
       }
+      // ?checkin=1 が付いたQRコード（会場掲示用）から開かれた時だけ true になる
+      // ※ liff.init()完了前に読むとliff.stateに退避されたままで正しく取れないため、必ずここで読む
+      const urlParams = new URLSearchParams(window.location.search);
+      isVenueEntry = urlParams.get('checkin') === '1';
       showLoader(false);
       initAppRoute();
     })
@@ -482,6 +488,7 @@ function checkUser() {
         if (res.found) {
             currentFamilyDetail = res;
             document.getElementById('choiceLeaderName').innerText = res.leaderName;
+            checkTodayEventAndToggleButton('choiceCheckInBtn');
             switchStep('stepChoice');
         } else {
             proceedToUpdateStep1(res, name, birth);
@@ -708,14 +715,39 @@ function submitData() {
     };
     showLoader(true);
     callGAS('saveRegistration', { payload: payload })
-    .then(() => {
+    .then(res => {
         showLoader(false);
+        currentFamilyDetail = {
+            found: true,
+            familyId: (res && res.familyId) || payload.familyId,
+            leaderName: payload.leaderName,
+            leaderBirth: payload.leaderBirth,
+            city: payload.city,
+            existingCompanions: (currentExistingCompanions || []).concat(newCompanions)
+        };
+        checkTodayEventAndToggleButton('continueToCheckInBtn');
         switchStep('step3');
     })
     .catch(err => {
         showLoader(false);
         alert("エラーが発生しました: " + err.message);
     });
+}
+
+// 本日開催のイベントがある時だけ、指定したボタンを表示する
+// （事前登録しただけで、開催日でもないのに誤ってチェックインしてしまうのを防ぐため）
+function checkTodayEventAndToggleButton(btnId) {
+    const btn = document.getElementById(btnId);
+    btn.style.display = 'none';
+    if (!isVenueEntry) return; // 会場QR（?checkin=1）から開いた場合以外は、当日受付に進ませない
+    callGAS('getEvents', {})
+        .then(res => {
+            const hasTodayEvent = (res && res.events || []).some(ev => ev.isToday);
+            btn.style.display = hasTodayEvent ? 'inline-block' : 'none';
+        })
+        .catch(() => {
+            btn.style.display = 'none';
+        });
 }
     function initAppRoute() {
       window.scrollTo(0, 0);
@@ -732,9 +764,29 @@ function submitData() {
           if (res && res.found) {
             currentFamilyData = { familyId: res.familyId, leaderName: res.leaderName };
             currentFamilyDetail = res;
-            loadEventOptions();
-            setupCheckInScreen(res);
-            switchStep('stepCheckIn');
+
+            if (isVenueEntry) {
+              // 会場QRから開いた場合のみ、本日イベントがあることを確認した上でチェックイン画面へ
+              callGAS('getEvents', {}).then(evRes => {
+                const hasTodayEvent = (evRes && evRes.events || []).some(ev => ev.isToday);
+                if (hasTodayEvent) {
+                  loadEventOptions();
+                  setupCheckInScreen(res);
+                  switchStep('stepCheckIn');
+                } else {
+                  alert("本日開催予定のイベントが見つかりませんでした。スタッフにお声がけください。");
+                  document.getElementById('choiceLeaderName').innerText = res.leaderName;
+                  document.getElementById('choiceCheckInBtn').style.display = 'none';
+                  switchStep('stepChoice');
+                }
+              });
+            } else {
+              // 通常のLINEリンクから開いた場合は、当日受付はできないようにする
+              // （更新のみ選べる。チェックインボタンはcheckTodayEventAndToggleButtonが非表示にする）
+              document.getElementById('choiceLeaderName').innerText = res.leaderName;
+              checkTodayEventAndToggleButton('choiceCheckInBtn');
+              switchStep('stepChoice');
+            }
           } else {
             switchStep('step0');
           }

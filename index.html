@@ -237,6 +237,7 @@ function showLoader(show) {
 let userLineUid = "";
 let currentExistingCompanions = [];
 let currentFamilyData = null;
+let isProcessing = false; // 二重送信防止（通信中に連打されても無視する）
 let isVenueEntry = false; // 会場QR（?checkin=1）から開いた時だけtrueになる
 let currentFamilyDetail = null; // checkUser/findFamilyByLineUidの結果一式（同行者追加などで再利用）
 let isAlternateEntry = false;   // trueの間はLINE UIDを送信しない（他人の代行入力を防ぐため）
@@ -320,6 +321,8 @@ function createMemberCheckbox(name, birth, isLeader) {
 }
 
 function executeCheckIn() {
+    if (isProcessing) return;
+
     const checkboxes = document.querySelectorAll('.member-chk:checked');
     if (checkboxes.length === 0) {
         alert("本日参加される方に少なくとも1人チェックを入れてください。");
@@ -364,9 +367,11 @@ function executeCheckIn() {
         attendeesSummary: summaryList.join(", ")
     };
     
+    isProcessing = true;
     showLoader(true);
     callGAS('completeCheckIn', { payload: payload })
         .then(res => {
+            isProcessing = false;
             showLoader(false);
             if (res && res.success === false) {
                 alert("エラーが発生しました: " + (res.error || "不明なエラー"));
@@ -377,6 +382,7 @@ function executeCheckIn() {
             switchStep('stepCheckInComplete');
         })
         .catch(err => {
+            isProcessing = false;
             showLoader(false);
             alert("エラーが発生しました: " + err.message);
         });
@@ -463,6 +469,8 @@ function toggleParticipationMode() {
 }
 
 function checkUser() {
+    if (isProcessing) return;
+
     let name = document.getElementById('checkName').value.trim();
     let birthInput = document.getElementById('checkBirth').value;
     
@@ -478,12 +486,14 @@ function checkUser() {
         alert("小学生以下のお子さまは代表者として登録できません。保護者の方が代表者としてご登録ください。");
         return;
     }
+    isProcessing = true;
     showLoader(true);
     // 「別の方として」入力中は、今このスマホでログイン中のLINEアカウントを
     // 別家族に誤って紐付けないよう、LINE UIDを送らない
     const lineUidToSend = isAlternateEntry ? '' : userLineUid;
     callGAS('checkRegistrationStatus', { name: name, birth: birth, lineUid: lineUidToSend })
     .then(res => {
+        isProcessing = false;
         showLoader(false);
         if (res.found) {
             currentFamilyDetail = res;
@@ -495,6 +505,7 @@ function checkUser() {
         }
     })
     .catch(err => {
+        isProcessing = false;
         showLoader(false);
         alert("エラーが発生しました: " + err.message);
     });
@@ -685,6 +696,8 @@ function checkAllCheckedState() {
 }
 
 function submitData() {
+    if (isProcessing) return;
+
     const checks = document.querySelectorAll('.promise-check');
     for (let chk of checks) {
         if (!chk.checked) { 
@@ -713,9 +726,11 @@ function submitData() {
         newCompanions: newCompanions,
         lineUid: isAlternateEntry ? '' : userLineUid
     };
+    isProcessing = true;
     showLoader(true);
     callGAS('saveRegistration', { payload: payload })
     .then(res => {
+        isProcessing = false;
         showLoader(false);
         currentFamilyDetail = {
             found: true,
@@ -729,6 +744,7 @@ function submitData() {
         switchStep('step3');
     })
     .catch(err => {
+        isProcessing = false;
         showLoader(false);
         alert("エラーが発生しました: " + err.message);
     });

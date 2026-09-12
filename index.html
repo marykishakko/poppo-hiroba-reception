@@ -824,12 +824,40 @@ function checkTodayEventAndToggleButton(btnId) {
             select.innerHTML = '<option value="">イベントが登録されていません</option>';
             return;
           }
+
+          const todayEvents = events.filter(ev => ev.isToday);
+          const currentEvents = events.filter(ev => ev.isCurrent);
+
+          // 自動選択のルール：
+          // ・現在の受付時間帯に一致するイベントが1つだけ → それを自動選択（午前午後など複数回開催の日はこれで絞り込む）
+          // ・本日のイベントが1つだけ（受付時間帯が未設定でもOK） → それを自動選択
+          // ・それ以外（本日複数あって絞り込めない） → 自動選択せず、選んでもらう
+          let autoSelectId = null;
+          if (currentEvents.length === 1) {
+            autoSelectId = currentEvents[0].eventId;
+          } else if (todayEvents.length === 1) {
+            autoSelectId = todayEvents[0].eventId;
+          }
+
+          if (!autoSelectId && todayEvents.length > 1) {
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '本日のイベントを選択してください';
+            select.appendChild(placeholder);
+          }
+
           events.forEach(ev => {
             const opt = document.createElement('option');
             opt.value = ev.eventName;
             opt.setAttribute('data-id', ev.eventId);
-            opt.textContent = ev.eventName + (ev.isToday ? '（本日）' : '（' + ev.eventDate + '）');
-            if (ev.isToday) opt.selected = true;
+            let label = ev.eventName;
+            if (ev.isToday) {
+              label += ev.receptionStart ? `（本日 ${ev.receptionStart}〜${ev.receptionEnd}）` : '（本日）';
+            } else {
+              label += `（${ev.eventDate}）`;
+            }
+            opt.textContent = label;
+            if (ev.eventId === autoSelectId) opt.selected = true;
             select.appendChild(opt);
           });
         })
